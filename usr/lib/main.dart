@@ -1,120 +1,246 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:math';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const AviatorPredictorApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AviatorPredictorApp extends StatelessWidget {
+  const AviatorPredictorApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Aviator Predictor',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const AviatorPredictorHomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class AviatorPredictorHomePage extends StatefulWidget {
+  const AviatorPredictorHomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<AviatorPredictorHomePage> createState() => _AviatorPredictorHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _AviatorPredictorHomePageState extends State<AviatorPredictorHomePage>
+    with TickerProviderStateMixin {
+  double currentMultiplier = 1.0;
+  bool isFlying = false;
+  bool isCrashed = false;
+  double betAmount = 100.0;
+  double potentialWin = 0.0;
+  List<double> history = [];
+  Timer? _timer;
+  late AnimationController _planeController;
+  late Animation<double> _planeAnimation;
+  Random random = Random();
 
-  void _incrementCounter() {
+  // Prediction logic
+  double suggestedCashOut = 1.5;
+  String predictionReason = "Based on average crash at 1.5x";
+
+  @override
+  void initState() {
+    super.initState();
+    _planeController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+    _planeAnimation = Tween<double>(begin: 0, end: 1).animate(_planeController);
+    _calculatePrediction();
+  }
+
+  void _calculatePrediction() {
+    if (history.isEmpty) {
+      suggestedCashOut = 1.5;
+      predictionReason = "Default suggestion - cash out early for safety";
+    } else {
+      double avg = history.reduce((a, b) => a + b) / history.length;
+      suggestedCashOut = avg * 0.8; // Suggest 80% of average
+      predictionReason = "Based on ${history.length} games, avg crash at ${avg.toStringAsFixed(2)}x";
+    }
+  }
+
+  void _startGame() {
+    if (isFlying) return;
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      isFlying = true;
+      isCrashed = false;
+      currentMultiplier = 1.0;
+      potentialWin = betAmount;
     });
+    _planeController.reset();
+    _planeController.forward();
+
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      setState(() {
+        currentMultiplier += 0.01 + random.nextDouble() * 0.05;
+        potentialWin = betAmount * currentMultiplier;
+
+        // Random crash simulation
+        if (random.nextDouble() < 0.02 || currentMultiplier > 10.0) {
+          _crashGame();
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  void _cashOut() {
+    if (!isFlying || isCrashed) return;
+    _timer?.cancel();
+    setState(() {
+      isFlying = false;
+      history.add(currentMultiplier);
+      _calculatePrediction();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Cashed out at ${currentMultiplier.toStringAsFixed(2)}x! Won: ₹${potentialWin.toStringAsFixed(2)}')),
+    );
+  }
+
+  void _crashGame() {
+    _timer?.cancel();
+    setState(() {
+      isFlying = false;
+      isCrashed = true;
+      history.add(currentMultiplier);
+      _calculatePrediction();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Plane crashed! You lost your bet.')),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _planeController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
+        title: const Text('Aviator Predictor'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text('$_counter', style: Theme.of(context).textTheme.headlineMedium),
+          children: [
+            // Multiplier Display
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isCrashed ? Colors.red : Colors.green,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${currentMultiplier.toStringAsFixed(2)}x',
+                style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Plane Animation
+            AnimatedBuilder(
+              animation: _planeAnimation,
+              builder: (context, child) {
+                return Container(
+                  height: 100,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue[200]!, Colors.blue[600]!],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: _planeAnimation.value * (MediaQuery.of(context).size.width - 100),
+                        top: 20,
+                        child: Icon(
+                          Icons.airplanemode_active,
+                          size: 60,
+                          color: isCrashed ? Colors.red : Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            // Betting Interface
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  onPressed: isFlying ? null : _startGame,
+                  child: const Text('Start Game'),
+                ),
+                ElevatedButton(
+                  onPressed: isFlying && !isCrashed ? _cashOut : null,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: const Text('Cash Out'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Bet Amount
+            TextField(
+              decoration: const InputDecoration(labelText: 'Bet Amount (₹)'),
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                setState(() {
+                  betAmount = double.tryParse(value) ?? 100.0;
+                });
+              },
+            ),
+            const SizedBox(height: 10),
+            Text('Potential Win: ₹${potentialWin.toStringAsFixed(2)}'),
+            const SizedBox(height: 20),
+            // Prediction
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Text(
+                      'Suggested Cash Out: ${suggestedCashOut.toStringAsFixed(2)}x',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Text(predictionReason),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // History
+            Expanded(
+              child: ListView.builder(
+                itemCount: history.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text('Game ${index + 1}: ${history[index].toStringAsFixed(2)}x'),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
